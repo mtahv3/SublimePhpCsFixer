@@ -6,10 +6,22 @@ import re
 def load_settings():
     return sublime.load_settings("SublimePhpCsFixer.sublime-settings")
 
+def load_project_settings()
+    if sublime.active_window() is not None and sublime.active_window().active_view() is not None:
+        project_settings = sublime.active_window().active_view().settings()
+        if project_settings.has("sublimephpcsfixer"):
+            project_settings.clear_on_change('sublimephpcsfixer')
+            project_settings = project_settings.get('sublimephpcsfixer')
+            project_settings.add_on_change('sublimephpcsfixer', load_project_settings)
+        else:
+            project_settings = {}
+    else:
+        project_settings = {}
+
+    return project_settings
 
 def setting_enabled(name):
-    return load_settings().get(name)
-
+    return load_settings().get(name) or load_project_settings().get(name)
 
 def is_windows():
     return sublime.platform() == "windows"
@@ -88,7 +100,7 @@ def log_to_console(msg):
     print("PHP CS Fixer: {0}".format(msg))
 
 
-def format_contents(contents, settings):
+def format_contents(contents):
     """
     Write the contents in a temporary file, format it with php-cs-fixer and return the formatted contents.
 
@@ -110,7 +122,7 @@ def format_contents(contents, settings):
         file.close()
 
     try:
-        format_file(tmp_file, settings)
+        format_file(tmp_file)
         with open(tmp_file, 'rb') as file:
             content = file.read().decode(encoding)
             file.close()
@@ -121,9 +133,9 @@ def format_contents(contents, settings):
     return content
 
 
-def format_file(tmp_file, settings):
-    php_path = settings.get('php_path')
-    path = settings.get('path')
+def format_file(tmp_file):
+    php_path = pref.get_setting('php_path')
+    path = pref.get_setting('path')
 
     if not path:
         path = locate_php_cs_fixer()
@@ -133,8 +145,8 @@ def format_file(tmp_file, settings):
     if not is_executable_file(path):
         raise ExecutableNotFoundException("Couldn't execute file: {0}".format(path))
 
-    configs = settings.get('config')
-    rules = settings.get('rules')
+    configs = pref.get_setting('config')
+    rules = pref.get_setting('rules')
 
     cmd = [php_path] if php_path else []
     cmd += [path, "fix", "--using-cache=off", tmp_file]
@@ -206,11 +218,36 @@ def get_project_folder(file):
 
     return None
 
+class Pref:
+    def load(self):
+        self.settings = sublime.load_settings('SublimePhpCsFixer.sublime-settings')
+
+        if sublime.active_window() is not None and sublime.active_window().active_view() is not None:
+            project_settings = sublime.active_window().active_view().settings()
+            if project_settings.has("SublimePhpCsFixer"):
+                project_settings.clear_on_change('SublimePhpCsFixer')
+                self.project_settings = project_settings.get('SublimePhpCsFixer')
+                project_settings.add_on_change('SublimePhpCsFixer', pref.load)
+            else:
+                self.project_settings = {}
+        else:
+            self.project_settings = {}
+
+    def get_setting(self, key):
+        if key in self.project_settings:
+            return self.project_settings.get(key)
+        else:
+            return self.settings.get(key)
+
+
+pref = Pref()
+
+def plugin_loaded():
+    pref.load()
 
 class SublimePhpCsFixCommand(sublime_plugin.TextCommand):
     def __init__(self, view):
         sublime_plugin.TextCommand.__init__(self, view)
-        self.settings = load_settings()
 
     def is_enabled(self):
         return self.is_supported_scope(self.view)
@@ -222,7 +259,7 @@ class SublimePhpCsFixCommand(sublime_plugin.TextCommand):
             contents = self.view.substr(region)
 
             if contents:
-                formatted = format_contents(contents, self.settings)
+                formatted = format_contents(contents)
                 if formatted and formatted != contents:
                     self.view.replace(edit, region, formatted)
                     log_to_console("Done. View formatted")
@@ -237,10 +274,10 @@ class SublimePhpCsFixCommand(sublime_plugin.TextCommand):
         return 'embedding.php' in view.scope_name(view.sel()[0].begin()) and not self.is_excluded(view)
 
     def is_excluded(self, view):        
-        if not self.settings.has('exclude'):
+        if not pref.get_setting('exclude'):
             return False
 
-        exclude = self.settings.get('exclude')
+        exclude = pref.get_setting('exclude')
         file_name = view.file_name()
 
         if not type(exclude) is list:
