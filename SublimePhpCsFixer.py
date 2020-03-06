@@ -3,26 +3,6 @@ import os, tempfile, subprocess
 import re
 
 
-def load_settings():
-    return sublime.load_settings("SublimePhpCsFixer.sublime-settings")
-
-def load_project_settings()
-    if sublime.active_window() is not None and sublime.active_window().active_view() is not None:
-        project_settings = sublime.active_window().active_view().settings()
-        if project_settings.has("sublimephpcsfixer"):
-            project_settings.clear_on_change('sublimephpcsfixer')
-            project_settings = project_settings.get('sublimephpcsfixer')
-            project_settings.add_on_change('sublimephpcsfixer', load_project_settings)
-        else:
-            project_settings = {}
-    else:
-        project_settings = {}
-
-    return project_settings
-
-def setting_enabled(name):
-    return load_settings().get(name) or load_project_settings().get(name)
-
 def is_windows():
     return sublime.platform() == "windows"
 
@@ -293,11 +273,11 @@ class SublimePhpCsFixCommand(sublime_plugin.TextCommand):
 
 class SublimePhpCsFixListener(sublime_plugin.EventListener):
     def on_pre_save(self, view):
-        if setting_enabled('on_save'):
+        if pref.get_setting('on_save'):
             view.run_command('sublime_php_cs_fix')
 
     def on_load(self, view):
-        if setting_enabled('on_load'):
+        if pref.get_setting('on_load'):
             view.run_command('sublime_php_cs_fix')
 
 
